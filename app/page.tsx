@@ -65,7 +65,12 @@ function readLocal<T>(key: string, fallback: T): T {
 }
 
 function saveLocal(key: string, value: unknown) {
-  window.localStorage.setItem(key, JSON.stringify(value));
+    try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Best-effort cache only. The Google Sheet is the source of truth, so a
+    // QuotaExceededError (or private-mode failure) must never surface to the user.
+  }
 }
 
 function WatchedIndicator({ date, complete }: { date: string; complete: boolean }) {
@@ -352,9 +357,14 @@ export default function Home() {
 
       const now = new Date().toISOString();
       setRecords(nextRecords);
-      setRefreshedAt(now);
-      saveLocal(CACHE_KEY, { records: nextRecords, refreshedAt: now });
-    } catch (caught) {
+            // The Sheet is the repository now, so this browser snapshot only needs enough
+      // to render a fallback view. Dropping the heavy conversation transcripts keeps
+      // the cache well under the localStorage quota.
+      saveLocal(CACHE_KEY, {
+        records: nextRecords.map((record) => ({ ...record, conversation: "" })),
+        refreshedAt: now,
+      });
+          } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The Sheet could not be read right now.");
     } finally {
       setLoading(false);
